@@ -1,383 +1,46 @@
-'use client'
+import React from 'react';
+import EpicCard from './EpicCard';
+import { Metadata } from 'next';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Card, CardContent } from "../components/ui/card";
-import { Textarea } from "../components/ui/textarea";
-import { Button } from "../components/ui/button";
-import { Twitter, Globe, Github, Copy, Trash2, Download, Shuffle } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import { ColorTheme, colorThemes, defaultThemeIndex } from './colorThemes';
-
-const defaultText = `I was surprised, as always, by how easy it was to leave—how good it felt to be gone, to be on the move, to be someplace where I had never been before and where I was never going to be again.
-
-- John Krakauer, Into the Wild.`;
-
-interface TextPreviewProps {
-    text: string;
-    fontsLoaded: boolean;
-    randomLayout: boolean;
-    theme: ColorTheme;
-}
-
-const TextPreview: React.FC<TextPreviewProps> = ({ text, fontsLoaded, randomLayout, theme }) => {
-    const previewRef = useRef<HTMLDivElement>(null);
-    const contentRef = useRef<HTMLDivElement>(null);
-    const [fontSizes, setFontSizes] = useState<number[]>([]);
-    const [yPositions, setYPositions] = useState<number[]>([]);
-    const [previewSize, setPreviewSize] = useState({ width: 0, height: 0 });
-
-    const getRandomFontSize = (baseSize: number) => {
-        return Math.floor(Math.random() * (baseSize * 2 - baseSize / 4 + 1) + baseSize / 4);
-    };
-
-    const regenerateFontSizes = (baseSize: number) => {
-        return text.split('\n\n').map(() => getRandomFontSize(baseSize));
-    };
-
-    const generateRandomYPositions = (containerHeight: number, paragraphHeights: number[]) => {
-        const positions: number[] = [];
-        const totalContentHeight = paragraphHeights.reduce((sum, height) => sum + height, 0);
-        const availableSpace = containerHeight - totalContentHeight;
-        const minGap = containerHeight * 0.05; // Minimum gap between paragraphs (5% of container height)
-
-        let currentY = 0;
-        paragraphHeights.forEach((height, index) => {
-            if (index === 0) {
-                positions.push(0); // First paragraph starts at the top
-                currentY = height;
-            } else {
-                const maxOffset = availableSpace / (paragraphHeights.length - 1);
-                let randomOffset = Math.random() * maxOffset;
-                if (randomOffset < minGap) randomOffset = minGap;
-                currentY += randomOffset;
-                positions.push(currentY);
-                currentY += height;
-            }
-        });
-
-        return positions;
-    };
-
-    const checkAndAdjustLayout = () => {
-        if (!previewRef.current || !contentRef.current) return;
-
-        const containerWidth = previewRef.current.offsetWidth;
-        const containerHeight = previewRef.current.offsetHeight;
-        const baseFontSize = Math.min(containerWidth, containerHeight) * 0.07;
-
-        const innerPadding = containerWidth * 0.06;
-        const totalHorizontalPadding = 2 * innerPadding;
-        const totalVerticalPadding = 2 * innerPadding;
-
-        let newFontSizes = regenerateFontSizes(baseFontSize);
-        let attempts = 0;
-        const maxAttempts = 100;
-
-        while (attempts < maxAttempts) {
-            contentRef.current.style.fontSize = `${baseFontSize}px`;
-            const paragraphHeights: number[] = [];
-
-            newFontSizes.forEach((size, index) => {
-                const paragraph = contentRef.current!.children[index] as HTMLParagraphElement;
-                if (paragraph) {
-                    paragraph.style.fontSize = `${size}px`;
-                    paragraph.style.position = 'absolute';
-                    paragraph.style.width = `${containerWidth - totalHorizontalPadding}px`;
-                    paragraphHeights.push(paragraph.offsetHeight);
-                }
-            });
-
-            const newYPositions = generateRandomYPositions(containerHeight - totalVerticalPadding, paragraphHeights);
-
-            let isOverflowing = false;
-            newYPositions.forEach((y, index) => {
-                const paragraph = contentRef.current!.children[index] as HTMLParagraphElement;
-                if (paragraph) {
-                    paragraph.style.top = `${y}px`;
-                    if (y + paragraphHeights[index] > containerHeight - totalVerticalPadding) {
-                        isOverflowing = true;
-                    }
-                }
-            });
-
-            if (!isOverflowing) {
-                setFontSizes(newFontSizes);
-                setYPositions(newYPositions);
-                break;
-            }
-
-            newFontSizes = newFontSizes.map(size => Math.max(size * 0.9, baseFontSize / 4));
-            attempts++;
-        }
-
-        if (attempts === maxAttempts) {
-            const fallbackFontSize = baseFontSize / 2;
-            setFontSizes(newFontSizes.map(() => fallbackFontSize));
-            const fallbackYPositions = text.split('\n\n').map((_, index) => index * (fallbackFontSize * 1.5));
-            setYPositions(fallbackYPositions);
-        }
-    };
-
-    const updatePreviewSize = () => {
-        if (previewRef.current) {
-            const width = previewRef.current.offsetWidth;
-            const height = width / 1.618;
-            setPreviewSize({ width, height });
-        }
-    };
-
-    useEffect(() => {
-        updatePreviewSize();
-        window.addEventListener('resize', updatePreviewSize);
-        return () => window.removeEventListener('resize', updatePreviewSize);
-    }, []);
-
-    useEffect(() => {
-        if (fontsLoaded) {
-            checkAndAdjustLayout();
-        }
-    }, [text, fontsLoaded, randomLayout, previewSize]);
-
-    const getBorderRadius = () => {
-        return `${previewSize.width * 0.03}px`;
-    };
-
-    const getPadding = () => {
-        return `${previewSize.width * 0.06}px`;
-    };
-
-    return (
-        <div
-            style={{
-                backgroundColor: theme.borderBackground,
-                padding: `${previewSize.width * 0.03}px`,
-                borderRadius: `${previewSize.width * 0.025}px`,
-                width: '100%',
-                boxSizing: 'border-box',
-            }}
-        >
-            <div
-                ref={previewRef}
-                className="text-preview"
-                style={{
-                    backgroundColor: theme.cardBackground,
-                    borderRadius: getBorderRadius(),
-                    padding: getPadding(),
-                    width: '100%',
-                    height: `${previewSize.height}px`,
-                    position: 'relative',
-                    overflow: 'hidden',
-                }}
-            >
-                <div
-                    ref={contentRef}
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        color: theme.textColor,
-                        wordBreak: 'break-word',
-                        whiteSpace: 'pre-wrap',
-                        fontFamily: fontsLoaded ? 'Huiwen_mingchao, sans-serif' : 'sans-serif',
-                        overflow: 'hidden',
-                        position: 'relative',
-                    }}
-                >
-                    {text.split('\n\n').map((paragraph, index) => (
-                        <p
-                            key={index}
-                            style={{
-                                fontSize: `${fontSizes[index] || previewSize.width * 0.04}px`,
-                                lineHeight: '1.5',
-                                marginBottom: 0,
-                                textAlign: 'left',
-                                position: 'absolute',
-                                top: `${yPositions[index] || 0}px`,
-                                left: 0,
-                                width: '100%',
-                            }}
-                        >
-                            {paragraph}
-                        </p>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+export const metadata: Metadata = {
+    title: 'SlothCard Generator - Create Beautiful Text Cards',
+    description: 'Generate stunning text cards with SlothCard. Perfect for quotes, thoughts, and memorable snippets. Easy to use, beautiful results.',
+    keywords: 'SlothCard, text card generator, quote maker, social media image',
 };
 
-const EpicCard: React.FC = () => {
-    const [text, setText] = useState<string>(defaultText);
-    const [fontsLoaded, setFontsLoaded] = useState<boolean>(false);
-    const [randomLayout, setRandomLayout] = useState<boolean>(false);
-    const [currentTheme, setCurrentTheme] = useState<ColorTheme>(colorThemes[defaultThemeIndex]);
-    const canvasRef = useRef<HTMLDivElement>(null);
-    const [isMobile, setIsMobile] = useState<boolean>(false);
-
-    useEffect(() => {
-        document.fonts.ready.then(() => {
-            setFontsLoaded(true);
-        });
-
-        const checkMobile = () => {
-            setIsMobile(window.innerWidth <= 768);
-        };
-
-        checkMobile();
-        window.addEventListener('resize', checkMobile);
-        return () => window.removeEventListener('resize', checkMobile);
-    }, []);
-
-    const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setText(e.target.value);
-    };
-
-    const handleDownload = () => {
-        if (canvasRef.current) {
-            const scale = 2;
-            const element = canvasRef.current;
-
-            html2canvas(element, {
-                backgroundColor: null,
-                scale: scale,
-                logging: false,
-                useCORS: true,
-                onclone: (clonedDoc) => {
-                    const clonedElement = clonedDoc.querySelector('.text-preview');
-                    if (clonedElement instanceof HTMLElement) {
-                        clonedElement.style.overflow = 'hidden';
-                    }
-                }
-            }).then((canvas) => {
-                const link = document.createElement('a');
-                link.download = 'epic-card.png';
-                link.href = canvas.toDataURL('image/png');
-                link.click();
-            });
-        }
-    };
-
-    const handleCopy = () => {
-        if (canvasRef.current) {
-            html2canvas(canvasRef.current, {
-                backgroundColor: null,
-                scale: 2,
-                logging: false,
-                useCORS: true,
-            }).then((canvas) => {
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        navigator.clipboard.write([
-                            new ClipboardItem({ 'image/png': blob })
-                        ]).then(() => {
-                            alert('Image copied to clipboard');
-                        }).catch(err => {
-                            console.error('Copy failed:', err);
-                            alert('Copy failed, please try again');
-                        });
-                    }
-                });
-            });
-        }
-    };
-
-    const handleClear = () => {
-        setText('');
-    };
-
-    const handleRandomLayout = () => {
-        setRandomLayout(prev => !prev);
-    };
-
+const Page: React.FC = () => {
     return (
-        <div className="min-h-screen bg-gradient-to-br from-[#EFEEE5] to-[#D7D6CF] p-6 md:p-10 lg:p-16 huiwen-font flex flex-col items-center justify-center">
+        <div className="min-h-screen bg-gradient-to-br from-[#EFEEE5] to-[#D7D6CF] p-6 md:p-10 lg:p-16 flex flex-col items-center justify-center">
             <div className="w-full max-w-6xl mx-auto">
-                <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2 text-[#166434] text-center" style={{ color: currentTheme.websiteTheme }}>EpicCard Generator</h1>
-                <p className="text-lg md:text-xl lg:text-2xl text-gray-600 mb-8 italic text-center">"Simplicity is the ultimate sophistication"</p>
-                <div className="flex flex-col xl:flex-row gap-8 md:gap-12">
-                    <div className="flex-1 flex flex-col">
-                        <Textarea
-                            placeholder="Enter your text here..."
-                            value={text}
-                            onChange={handleTextChange}
-                            className="w-full flex-grow mb-6 huiwen-font rounded-xl text-base md:text-lg lg:text-xl p-4 md:p-6 border-2 border-gray-300 focus:border-[#166434] transition-colors duration-200"
-                            style={{ minHeight: '250px', whiteSpace: 'pre-wrap', borderColor: currentTheme.websiteTheme }}
-                        />
-                        <div className="flex flex-wrap gap-4 justify-between">
-                            <div className="flex flex-wrap gap-4">
-                                <Button
-                                    onClick={handleDownload}
-                                    className="huiwen-font text-white hover:bg-opacity-80 rounded-xl text-sm md:text-base py-3 px-6 transition-colors duration-200"
-                                    style={{ backgroundColor: currentTheme.websiteTheme }}
-                                >
-                                    <Download className="mr-2 h-5 w-5" /> Download
-                                </Button>
-                                {!isMobile && (
-                                    <Button
-                                        onClick={handleCopy}
-                                        className="huiwen-font bg-gray-200 text-black hover:bg-gray-300 rounded-xl text-sm md:text-base py-3 px-6 transition-colors duration-200"
-                                    >
-                                        <Copy className="mr-2 h-5 w-5" /> Copy
-                                    </Button>
-                                )}
-                                <Button
-                                    onClick={handleClear}
-                                    className="huiwen-font bg-red-500 text-white hover:bg-red-600 rounded-xl text-sm md:text-base py-3 px-6 transition-colors duration-200"
-                                >
-                                    <Trash2 className="mr-2 h-5 w-5" /> Clear
-                                </Button>
-                            </div>
-                            <Button
-                                onClick={handleRandomLayout}
-                                className="huiwen-font bg-purple-500 text-white hover:bg-purple-600 rounded-xl text-sm md:text-base py-3 px-6 transition-colors duration-200"
-                            >
-                                <Shuffle className="mr-2 h-5 w-5" /> Random Layout
-                            </Button>
-                        </div>
-                    </div>
-                    <div className="flex-1 w-full" ref={canvasRef}>
-                        <TextPreview
-                            text={text}
-                            fontsLoaded={fontsLoaded}
-                            randomLayout={randomLayout}
-                            theme={currentTheme}
-                        />
-                    </div>
-                </div>
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-2 text-[#013365] text-center">SlothCard Generator</h1>
+                <p className="text-lg md:text-xl lg:text-2xl text-gray-600 mb-8 italic text-center">"Slow down and savor your thoughts"</p>
+                <EpicCard />
             </div>
             <footer className="mt-12 text-center">
-                <div className="flex justify-center space-x-6 mb-4">
-                    <a
-                        href="https://x.com/benshandebiao"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-600 hover:text-black transition-colors duration-200"
-                        aria-label="Twitter profile"
-                    >
-                        <Twitter size={24} />
+                <p className="text-sm md:text-base text-gray-500">© 2024 SlothCard Generator. All rights reserved.</p>
+                <div className="mt-4 flex justify-center space-x-6">
+                    <a href="https://x.com/benshandebiao" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-500">
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                        </svg>
+                        <span className="sr-only">Twitter</span>
                     </a>
-                    <a
-                        href="https://pomodiary.com/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-600 hover:text-black transition-colors duration-200"
-                        aria-label="Official website"
-                    >
-                        <Globe size={24} />
+                    <a href="https://github.com/qiaoshouqing/text2card" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-900">
+                        <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                            <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                        </svg>
+                        <span className="sr-only">GitHub</span>
                     </a>
-                    <a
-                        href="https://github.com/qiaoshouqing/text2card"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-600 hover:text-black transition-colors duration-200"
-                        aria-label="GitHub repository"
-                    >
-                        <Github size={24} />
+                    <a href="https://pomodiary.com/" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-green-500">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="sr-only">Official Website</span>
                     </a>
                 </div>
-                <p className="text-sm md:text-base text-gray-500">© 2024 EpicCard Generator. All rights reserved.</p>
             </footer>
         </div>
     );
 };
 
-export default EpicCard;
+export default Page;
